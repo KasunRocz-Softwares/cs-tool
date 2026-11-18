@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
   <script type="module" src="app.js?v=2"></script>
 </head>
 <body>
@@ -288,14 +288,17 @@ nano .env   # set ADMIN_PASSWORD</code></pre></div>
         <div class="start-panel" role="tabpanel" id="tab-agent" aria-labelledby="t-agent" hidden>
           <ol class="onboard">
             <li>In the dashboard, click <b>+ Add server</b> and copy the one-time API key.</li>
-            <li>On the Ubuntu server, build and install the agent package (from the source repository).</li>
-            <li>In <code>/etc/monitor-agent/agent.yaml</code>, set <code>server_url</code> to your CS Tool address (your <code>PUBLIC_URL</code>) and <code>api_key</code> to the key.</li>
-            <li>Start the service and follow its logs.</li>
+            <li>On the Ubuntu server you want to monitor, download and install the agent package. It needs Node.js 18 or newer: Ubuntu 24.04 includes it, while older releases need a newer Node.js first (for example from NodeSource).</li>
           </ol>
-          <div class="code"><button class="copy" type="button">Copy</button><pre><code>cd packaging &amp;&amp; ./build-deb.sh
-sudo dpkg -i ../dist/monitor-agent_1.0.0_all.deb
-sudo systemctl enable --now monitor-agent
+          <div class="code"><button class="copy" type="button">Copy</button><pre><code>curl -fsSLO https://github.com/KasunRocz-Softwares/cs-tool/releases/latest/download/monitor-agent_latest_all.deb
+sudo apt-get install -y ./monitor-agent_latest_all.deb</code></pre></div>
+          <ol class="onboard" start="3" style="counter-reset: s 2">
+            <li>In <code>/etc/monitor-agent/agent.yaml</code>, set <code>server_url</code> to your CS Tool address (your <code>PUBLIC_URL</code>) and <code>api_key</code> to the key, then restart the agent and follow its logs.</li>
+          </ol>
+          <div class="code"><button class="copy" type="button">Copy</button><pre><code>sudo nano /etc/monitor-agent/agent.yaml
+sudo systemctl restart monitor-agent
 journalctl -u monitor-agent -f</code></pre></div>
+          <p class="note">To update an agent, run the same two install commands again; your <code>agent.yaml</code> is kept. Every package is on the <a href="https://github.com/KasunRocz-Softwares/cs-tool/releases" target="_blank" rel="noopener">releases page</a> with SHA-256 checksums.</p>
         </div>
 
         <div class="start-panel" role="tabpanel" id="tab-local" aria-labelledby="t-local" hidden>
@@ -310,7 +313,10 @@ docker run -d --name tsdb -p 5432:5432 \
   timescale/timescaledb:2.17.2-pg16
 cd backend &amp;&amp; npm install &amp;&amp; cp .env.example .env
 npm run migrate &amp;&amp; npm run start:dev        # :4000
-cd dashboard &amp;&amp; npm install &amp;&amp; npm run dev  # :5173</code></pre></div>
+cd dashboard &amp;&amp; npm install &amp;&amp; npm run dev  # :5173
+
+# Build the agent package yourself
+cd packaging &amp;&amp; ./build-deb.sh   # -&gt; dist/monitor-agent_&lt;version&gt;_all.deb</code></pre></div>
         </div>
 
         <p class="warn" role="note"><b>Keep <code>.env</code> private.</b> The admin password is reset to <code>ADMIN_PASSWORD</code> every time the API starts, so change it there. Set <code>tls_verify: true</code> on every agent once you use HTTPS.</p>
