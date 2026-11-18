@@ -20,6 +20,12 @@ mkdir -p "$STAGE/lib/systemd/system"
 # --- application files ---
 cp -r "$AGENT/src" "$STAGE/usr/lib/monitor-agent/"
 cp "$AGENT/package.json" "$STAGE/usr/lib/monitor-agent/"
+# Bundle runtime dependencies when they're installed (CI runs `npm ci --omit=dev` in agent/ first),
+# so the package works on servers without npm or internet access. postinst's npm install
+# then has nothing to do.
+if [ -d "$AGENT/node_modules" ]; then
+  cp -r "$AGENT/node_modules" "$STAGE/usr/lib/monitor-agent/"
+fi
 
 # --- default config (installed as conffile) ---
 cp "$AGENT/config/agent.example.yaml" "$STAGE/etc/monitor-agent/agent.yaml"

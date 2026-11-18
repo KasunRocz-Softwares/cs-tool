@@ -1,0 +1,121 @@
+# Builds the monitor-agent .deb, installs it in a clean Ubuntu container to check it works,
+# then publishes it as a GitHub Release (tag agent-v<version>).
+#
+# Stable download link for the newest package:
+#   https://github.com/KasunRocz-Softwares/cs-tool/releases/latest/download/monitor-agent_latest_all.deb
+#
+# Self-update signatures: add the private key from packaging/generate-signing-key.js as the
+# repository secret AGENT_UPDATE_SIGNING_KEY to also publish monitor-agent_<version>_all.deb.sig.
+# Without it, sign offline as described in packaging/README.md.
+name: Agent package
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'agent/**'
+      - 'packaging/**'
+      - '.github/workflows/agent-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-package
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build, test and publish the .deb
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Read the package version
+        id: ver
+        run: |
+          v=$(grep -E '^VERSION=' packaging/build-deb.sh | head -1 | cut -d'"' -f2)
+          c=$(grep -E '^Version:' packaging/debian/control | awk '{print $2}')
+          echo "build-deb.sh: $v   debian/control: $c"
+          [ -n "$v" ] || { echo "No VERSION in build-deb.sh"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Bundle the agent's runtime dependencies
+        working-directory: agent
+        run: npm ci --omit=dev --no-audit --no-fund
+
+      - name: Build the package
+        run: |
+          chmod +x packaging/build-deb.sh packaging/debian/postinst packaging/debian/prerm packaging/debian/postrm
+          packaging/build-deb.sh
+          ls -l dist/
+          dpkg-deb --info "dist/monitor-agent_${{ steps.ver.outputs.version }}_all.deb"
+
+      - name: Install it on a clean Ubuntu and check the agent starts
+        run: |
+          deb="monitor-agent_${{ steps.ver.outputs.version }}_all.deb"
+          docker run --rm -v "$PWD/dist:/pkg:ro" ubuntu:24.04 bash -euxc "
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq nodejs adduser >/dev/null
+            dpkg -i /pkg/$deb
+            test -f /lib/systemd/system/monitor-agent.service
+            test -f /etc/monitor-agent/agent.yaml
+            id monitor-agent
+            node -e \"require('/usr/lib/monitor-agent/node_modules/js-yaml')\"
+            # Start the agent briefly with the stock config: it must load without missing modules.
+            out=\$(timeout 8 node /usr/lib/monitor-agent/src/index.js 2>&1 || true)
+            echo \"\$out\" | head -20
+            if echo \"\$out\" | grep -q 'Cannot find module'; then exit 1; fi
+          "
+
+      - name: Prepare release files
+        id: files
+        env:
+          SIGNING_KEY: ${{ secrets.AGENT_UPDATE_SIGNING_KEY }}
+        run: |
+          cd dist
+          deb="monitor-agent_${{ steps.ver.outputs.version }}_all.deb"
+          cp "$deb" monitor-agent_latest_all.deb
+          if [ -n "$SIGNING_KEY" ]; then
+            printf '%s\n' "$SIGNING_KEY" > /tmp/signing-key.pem
+            node ../packaging/sign-agent-release.js "$deb" /tmp/signing-key.pem
+            rm -f /tmp/signing-key.pem
+            echo "Signed $deb"
+          else
+            echo "AGENT_UPDATE_SIGNING_KEY not set: no self-update signature published."
+          fi
+          sha256sum monitor-agent_*.deb > SHA256SUMS
+          cat SHA256SUMS
+          ls -1
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          tag="agent-v$VERSION"
+          notes="Ubuntu monitoring agent $VERSION, built from ${GITHUB_SHA::7}.
+
+          Install on the server you want to monitor:
+
+          \`\`\`bash
+          curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/monitor-agent_latest_all.deb
+          sudo apt-get install -y ./monitor-agent_latest_all.deb
+          \`\`\`
+
+          Then set \`server_url\` and \`api_key\` in \`/etc/monitor-agent/agent.yaml\` and run \`sudo systemctl restart monitor-agent\`.
+          Full steps: https://qulaxy.com/cs-tool/#start"
+          cd dist
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" monitor-agent_*.deb* SHA256SUMS --clobber
+            gh release edit "$tag" --notes "$notes" --latest
+          else
+            gh release create "$tag" monitor-agent_*.deb* SHA256SUMS \
+              --title "monitor-agent $VERSION" --notes "$notes" --target "$GITHUB_SHA" --latest
+          fi
