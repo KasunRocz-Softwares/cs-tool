@@ -265,7 +265,7 @@ sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" .env
 sed -i "s|^TOKEN_ENC_KEY=.*|TOKEN_ENC_KEY=$(openssl rand -hex 32)|" .env
 nano .env   # set ADMIN_PASSWORD</code></pre></div>
           <ol class="onboard" start="3" style="counter-reset: s 2">
-            <li>Start it, then open the dashboard and sign in with <code>ADMIN_EMAIL</code> and <code>ADMIN_PASSWORD</code>.</li>
+            <li>Start it, then open the dashboard and sign in with <code>ADMIN_EMAIL</code> and <code>ADMIN_PASSWORD</code>. The first sign-in asks you to set up two-factor with an authenticator app.</li>
           </ol>
           <div class="code"><button class="copy" type="button">Copy</button><pre><code>docker compose up -d</code></pre></div>
           <ul class="endpoints">
