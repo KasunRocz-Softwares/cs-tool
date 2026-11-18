@@ -22,6 +22,18 @@ Next.js dashboard over WebSockets.
 | `database/` | PostgreSQL + TimescaleDB | Hypertables, continuous aggregates, retention/compression |
 | `dashboard/` | Next.js + Recharts | Live dashboard: overview, per-server charts, security timeline, alerts, compare |
 
+## Self-host with the published images
+
+Prebuilt images are published on every push to `master` (`.github/workflows/containers.yml`):
+
+- `ghcr.io/kasunrocz-softwares/cs-tool-api`
+- `ghcr.io/kasunrocz-softwares/cs-tool-dashboard`
+
+Copy `deploy/docker-compose.yml` and `deploy/env.example` (as `.env`) into an empty folder, fill in the required
+values (`POSTGRES_PASSWORD`, `JWT_SECRET`, `TOKEN_ENC_KEY`, `ADMIN_PASSWORD`), run `docker compose up -d` and open
+http://localhost:8080. A Caddy proxy serves the dashboard and the API (including agent traffic) from one address,
+with automatic HTTPS when you set a domain. Full steps: https://qulaxy.com/cs-tool/#start
+
 ## Quick start (Docker)
 
 ```bash

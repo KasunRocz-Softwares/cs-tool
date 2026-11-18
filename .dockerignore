@@ -1,0 +1,24 @@
+# Used by docker/*.Dockerfile (built from the repo root). Keeps secrets, local state and
+# build output out of the images.
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/.next
+**/dist
+.git
+.github
+.idea
+.claude
+.superpowers
+*.docx
+*.log
+agent
+packaging
+monitoring
+helm-platform
+outputs_build
+docs
+deploy

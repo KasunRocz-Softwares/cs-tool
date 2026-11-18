@@ -1,0 +1,98 @@
+# CS Tool — self-hosted stack using the published images.
+#
+#   1. Put this file and .env (copied from env.example) in an empty folder.
+#   2. Fill in the REQUIRED values in .env.
+#   3. docker compose up -d
+#   4. Open http://localhost:8080 and sign in with ADMIN_EMAIL / ADMIN_PASSWORD.
+#
+# Needs Docker Compose v2.23 or newer (for the inline Caddy config below).
+name: cs-tool
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-monitoring}
+      POSTGRES_USER: ${POSTGRES_USER:-monitor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # The service must be called "backend": the dashboard image proxies to http://backend:4000.
+  backend:
+    image: ghcr.io/kasunrocz-softwares/cs-tool-api:${CS_TOOL_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: '4000'
+      DATABASE_URL: postgres://${POSTGRES_USER:-monitor}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-monitoring}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      TOKEN_ENC_KEY: ${TOKEN_ENC_KEY:?Set TOKEN_ENC_KEY in .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      DASHBOARD_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
+      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-CS Tool}
+      WEBAUTHN_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  dashboard:
+    image: ghcr.io/kasunrocz-softwares/cs-tool-dashboard:${CS_TOOL_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  # One address for everything: /api and /socket.io go to the API (agents send metrics here too),
+  # the rest to the dashboard. Set SITE_ADDRESS to your domain (e.g. monitor.example.com) and
+  # HTTP_PORT=80 / HTTPS_PORT=443 to get automatic HTTPS from Let's Encrypt.
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '${HTTP_PORT:-8080}:80'
+      - '${HTTPS_PORT:-8443}:443'
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    volumes:
+      - caddy_data:/data
+    depends_on:
+      - dashboard
+      - backend
+
+configs:
+  caddyfile:
+    content: |
+      ${SITE_ADDRESS:-:80} {
+        encode gzip
+        handle /api/* {
+          reverse_proxy backend:4000
+        }
+        handle /socket.io/* {
+          reverse_proxy backend:4000
+        }
+        handle {
+          reverse_proxy dashboard:5173
+        }
+      }
+
+volumes:
+  dbdata:
+  caddy_data:

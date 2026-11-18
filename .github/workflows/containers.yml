@@ -1,0 +1,141 @@
+# Builds the API and dashboard images, publishes them to GitHub Container Registry,
+# then starts the full self-hosted stack (deploy/docker-compose.yml) and checks it works.
+#   ghcr.io/kasunrocz-softwares/cs-tool-api
+#   ghcr.io/kasunrocz-softwares/cs-tool-dashboard
+name: Containers
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+    paths:
+      - 'backend/**'
+      - 'dashboard/**'
+      - 'database/**'
+      - 'docker/**'
+      - '.dockerignore'
+      - 'deploy/**'
+      - '.github/workflows/containers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: containers-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/kasunrocz-softwares/cs-tool
+
+jobs:
+  build:
+    name: Build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            dockerfile: docker/backend.Dockerfile
+          - image: dashboard
+            dockerfile: docker/dashboard.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  smoke-test:
+    name: Smoke test the published stack
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start the stack with the images just built
+        working-directory: deploy
+        run: |
+          cp env.example .env
+          sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 16)|" .env
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" .env
+          sed -i "s|^TOKEN_ENC_KEY=.*|TOKEN_ENC_KEY=$(openssl rand -hex 32)|" .env
+          sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=smoke-test-password|" .env
+          sed -i "s|^CS_TOOL_VERSION=.*|CS_TOOL_VERSION=sha-${GITHUB_SHA::7}|" .env
+          docker compose up -d
+          docker compose ps
+
+      - name: Wait for the API and dashboard
+        run: |
+          for i in $(seq 1 60); do
+            api=$(curl -s -o /tmp/login.json -w '%{http_code}' -H 'Content-Type: application/json' \
+              -d '{"email":"admin@example.com","password":"smoke-test-password"}' \
+              http://localhost:8080/api/v1/auth/login || true)
+            web=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/login || true)
+            echo "try $i: login=$api dashboard=$web"
+            if { [ "$api" = "200" ] || [ "$api" = "201" ]; } && [ "$web" = "200" ]; then exit 0; fi
+            sleep 5
+          done
+          exit 1
+
+      - name: Check the stack behaves like a fresh install
+        run: |
+          set -e
+          # Signing in returns either a session token or the MFA enrolment step.
+          body=$(cat /tmp/login.json)
+          echo "login response keys: $(echo "$body" | python3 -c 'import sys,json; print(sorted(json.load(sys.stdin).keys()))')"
+          echo "$body" | grep -qE '"(access_token|token|mfa_token|mfa_required|mfa_enroll[a-z_]*)"'
+
+          # A wrong password must be refused.
+          bad=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+            -d '{"email":"admin@example.com","password":"wrong"}' http://localhost:8080/api/v1/auth/login)
+          echo "wrong password: $bad"
+          [ "$bad" = "401" ] || [ "$bad" = "403" ] || [ "$bad" = "400" ]
+
+          # Live dashboard updates: socket.io handshake through the proxy.
+          sio=$(curl -fsS 'http://localhost:8080/socket.io/?EIO=4&transport=polling')
+          echo "socket.io: $sio"
+          case "$sio" in 0\{*) ;; *) echo "socket.io handshake failed"; exit 1;; esac
+
+      - name: Show logs on failure
+        if: failure()
+        working-directory: deploy
+        run: docker compose logs --no-color --tail=200
+
+      - name: Stop the stack
+        if: always()
+        working-directory: deploy
+        run: docker compose down -v
