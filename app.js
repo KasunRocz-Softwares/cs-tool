@@ -232,7 +232,26 @@ menuBtn.addEventListener('click', () => {
 });
 nav.querySelectorAll('.nav-links a').forEach((a) => a.addEventListener('click', () => { nav.classList.remove('open'); menuBtn.setAttribute('aria-expanded', 'false'); }));
 
+/* ---------------- Self-host files: show the real downloads, so they can't disagree ---------------- */
+function initFiles() {
+  document.querySelectorAll('code[data-src]').forEach((code) => {
+    fetch(code.dataset.src, { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
+      .then((text) => {
+        code.replaceChildren(...text.split('\n').flatMap((line, i) => {
+          const parts = i ? [document.createTextNode('\n')] : [];
+          const m = /^(\s*)(#.*)$/.exec(line);
+          if (m) { parts.push(document.createTextNode(m[1])); const c = document.createElement('span'); c.className = 'c'; c.textContent = m[2]; parts.push(c); }
+          else parts.push(document.createTextNode(line));
+          return parts;
+        }));
+      })
+      .catch(() => { /* keep the fallback link */ });
+  });
+}
+
 initWorkspaces();
+initFiles();
 initConsole();
 initStart();
 initTerminal();

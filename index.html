@@ -23,8 +23,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-  <script type="module" src="app.js"></script>
+  <link rel="stylesheet" href="styles.css?v=3">
+  <script type="module" src="app.js?v=2"></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -240,47 +240,56 @@
     <section class="section" id="start">
       <div class="section-head">
         <p class="kicker">// Get started</p>
-        <h2 class="h2">Running in one command.</h2>
+        <h2 class="h2">Running on your server in five minutes.</h2>
+        <p class="body">CS Tool ships as two Docker images. One compose file starts them with TimescaleDB and a proxy that serves the dashboard, the API and agent traffic from a single address.</p>
       </div>
       <div class="start reveal">
         <div class="start-tabs" role="tablist" aria-label="Setup options">
-          <button role="tab" aria-selected="true" aria-controls="tab-docker" id="t-docker" type="button">Docker</button>
-          <button role="tab" aria-selected="false" aria-controls="tab-local" id="t-local" type="button" tabindex="-1">Local development</button>
+          <button role="tab" aria-selected="true" aria-controls="tab-docker" id="t-docker" type="button">Docker images</button>
           <button role="tab" aria-selected="false" aria-controls="tab-agent" id="t-agent" type="button" tabindex="-1">Onboard a server</button>
+          <button role="tab" aria-selected="false" aria-controls="tab-local" id="t-local" type="button" tabindex="-1">From source</button>
         </div>
 
         <div class="start-panel" role="tabpanel" id="tab-docker" aria-labelledby="t-docker">
-          <div class="code"><button class="copy" type="button">Copy</button><pre><code>git clone https://github.com/KasunRocz-Softwares/cs-tool.git
-cd cs-tool
-cp backend/.env.example backend/.env   # optional
-docker compose up --build</code></pre></div>
+          <ol class="onboard">
+            <li>On any machine with <b>Docker</b> and <b>Docker Compose v2.23+</b>, download the two files.</li>
+          </ol>
+          <div class="code"><button class="copy" type="button">Copy</button><pre><code>mkdir cs-tool &amp;&amp; cd cs-tool
+curl -fsSLO https://qulaxy.com/cs-tool/setup/docker-compose.yml
+curl -fsSL -o .env https://qulaxy.com/cs-tool/setup/env.example</code></pre></div>
+          <ol class="onboard" start="2" style="counter-reset: s 1">
+            <li>Fill in the four required values in <code>.env</code>. On Linux this generates the secrets, then set your own <code>ADMIN_PASSWORD</code>:</li>
+          </ol>
+          <div class="code"><button class="copy" type="button">Copy</button><pre><code>sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 16)|" .env
+sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" .env
+sed -i "s|^TOKEN_ENC_KEY=.*|TOKEN_ENC_KEY=$(openssl rand -hex 32)|" .env
+nano .env   # set ADMIN_PASSWORD</code></pre></div>
+          <ol class="onboard" start="3" style="counter-reset: s 2">
+            <li>Start it, then open the dashboard and sign in with <code>ADMIN_EMAIL</code> and <code>ADMIN_PASSWORD</code>.</li>
+          </ol>
+          <div class="code"><button class="copy" type="button">Copy</button><pre><code>docker compose up -d</code></pre></div>
           <ul class="endpoints">
-            <li><span class="mono">Dashboard</span><code>http://localhost:5173</code></li>
-            <li><span class="mono">API</span><code>http://localhost:4000/api/v1</code></li>
-            <li><span class="mono">Database</span><code>localhost:5432</code></li>
+            <li><span class="mono">Dashboard</span><code>http://localhost:8080</code></li>
+            <li><span class="mono">API &amp; agents</span><code>http://localhost:8080/api/v1</code></li>
+            <li><span class="mono">Your domain</span><code>SITE_ADDRESS=monitor.example.com</code></li>
           </ul>
-          <p class="note">The backend applies the database schema and seeds an admin user on first start.</p>
-        </div>
+          <p class="note">For a domain with automatic HTTPS, set <code>SITE_ADDRESS</code>, <code>PUBLIC_URL</code> and <code>WEBAUTHN_RP_ID</code> to it and use ports 80 and 443. Update later with <code>docker compose pull &amp;&amp; docker compose up -d</code>.</p>
 
-        <div class="start-panel" role="tabpanel" id="tab-local" aria-labelledby="t-local" hidden>
-          <div class="code"><button class="copy" type="button">Copy</button><pre><code># Database
-docker run -d --name tsdb -p 5432:5432 \
-  -e POSTGRES_USER=monitor -e POSTGRES_PASSWORD=monitor -e POSTGRES_DB=monitoring \
-  timescale/timescaledb:2.17.2-pg16
-
-# Backend  (:4000)
-cd backend &amp;&amp; npm install &amp;&amp; cp .env.example .env
-npm run migrate &amp;&amp; npm run start:dev
-
-# Dashboard  (:5173)
-cd dashboard &amp;&amp; npm install &amp;&amp; npm run dev</code></pre></div>
+          <details class="file" open>
+            <summary><span>docker-compose.yml</span><a href="setup/docker-compose.yml" download>Download</a></summary>
+            <div class="code"><button class="copy" type="button">Copy</button><pre><code data-src="setup/docker-compose.yml">Loading… <a href="setup/docker-compose.yml">open docker-compose.yml</a></code></pre></div>
+          </details>
+          <details class="file">
+            <summary><span>.env</span><a href="setup/env.example" download=".env">Download</a></summary>
+            <div class="code"><button class="copy" type="button">Copy</button><pre><code data-src="setup/env.example">Loading… <a href="setup/env.example">open env.example</a></code></pre></div>
+          </details>
         </div>
 
         <div class="start-panel" role="tabpanel" id="tab-agent" aria-labelledby="t-agent" hidden>
           <ol class="onboard">
             <li>In the dashboard, click <b>+ Add server</b> and copy the one-time API key.</li>
-            <li>On the Ubuntu server, build and install the package.</li>
-            <li>Set <code>server_url</code> and <code>api_key</code> in <code>/etc/monitor-agent/agent.yaml</code>.</li>
+            <li>On the Ubuntu server, build and install the agent package (from the source repository).</li>
+            <li>In <code>/etc/monitor-agent/agent.yaml</code>, set <code>server_url</code> to your CS Tool address (your <code>PUBLIC_URL</code>) and <code>api_key</code> to the key.</li>
             <li>Start the service and follow its logs.</li>
           </ol>
           <div class="code"><button class="copy" type="button">Copy</button><pre><code>cd packaging &amp;&amp; ./build-deb.sh
@@ -289,8 +298,28 @@ sudo systemctl enable --now monitor-agent
 journalctl -u monitor-agent -f</code></pre></div>
         </div>
 
-        <p class="warn" role="note"><b>Before a real deployment:</b> change <code>JWT_SECRET</code>, the database credentials and the seeded admin password, and set <code>tls_verify: true</code> on every agent.</p>
+        <div class="start-panel" role="tabpanel" id="tab-local" aria-labelledby="t-local" hidden>
+          <div class="code"><button class="copy" type="button">Copy</button><pre><code># Build and run everything from the source
+git clone https://github.com/KasunRocz-Softwares/cs-tool.git
+cd cs-tool
+docker compose up --build
+
+# Or run the parts for development
+docker run -d --name tsdb -p 5432:5432 \
+  -e POSTGRES_USER=monitor -e POSTGRES_PASSWORD=monitor -e POSTGRES_DB=monitoring \
+  timescale/timescaledb:2.17.2-pg16
+cd backend &amp;&amp; npm install &amp;&amp; cp .env.example .env
+npm run migrate &amp;&amp; npm run start:dev        # :4000
+cd dashboard &amp;&amp; npm install &amp;&amp; npm run dev  # :5173</code></pre></div>
+        </div>
+
+        <p class="warn" role="note"><b>Keep <code>.env</code> private.</b> The admin password is reset to <code>ADMIN_PASSWORD</code> every time the API starts, so change it there. Set <code>tls_verify: true</code> on every agent once you use HTTPS.</p>
       </div>
+
+      <ul class="images reveal" aria-label="Published images">
+        <li><span class="mono">API image</span><code>ghcr.io/kasunrocz-softwares/cs-tool-api</code></li>
+        <li><span class="mono">Dashboard image</span><code>ghcr.io/kasunrocz-softwares/cs-tool-dashboard</code></li>
+      </ul>
 
       <div class="stack reveal">
         <span class="mono">Built with</span>
