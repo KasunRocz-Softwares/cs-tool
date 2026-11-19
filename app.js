@@ -391,7 +391,25 @@ function initGlobe(THREE) {
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    camera.position.z = w / h < 1 ? 13 : 10;
+    // The canvas spans the whole window, so frame the globe from the window's shape: park it on the
+    // right and keep the whole sphere (radius ~2.8 with glow) inside the view at any size. Only the
+    // faint ring may run off the screen edge.
+    const RAD = 2.8, aspect = w / h;
+    const tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    let z, x, y = 0;
+    if (innerWidth > 1080) {
+      z = Math.max(10, RAD / (0.66 * tanH)); // sphere never taller than ~2/3 of the window
+      const halfW = z * tanH * aspect;
+      x = Math.max(0, Math.min(halfW - RAD, halfW * 0.46));
+    } else {
+      // stacked layout: a smaller globe in the upper right, behind the intro
+      z = Math.max(11, (RAD * 2) / (tanH * aspect));
+      const halfW = z * tanH * aspect, halfH = z * tanH;
+      x = halfW - RAD * 1.1;
+      y = halfH * 0.3;
+    }
+    camera.position.z = z;
+    [world, halo, radar].forEach((o) => o.position.set(x, y, 0));
     camera.updateProjectionMatrix();
   };
   resize();
